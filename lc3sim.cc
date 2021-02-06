@@ -103,13 +103,13 @@ class Simulator {
   bool ReadImage(const std::string &filename) {
     std::unique_ptr<std::FILE, decltype(&CloseFile)> fp(
         std::fopen(filename.c_str(), "rb"), &CloseFile);
-    uint16_t memoryOrigin;
-    std::fread(&memoryOrigin, sizeof(memoryOrigin), 1, fp.get());
-    memoryOrigin = Swap16(memoryOrigin);
+    uint16_t memory_origin;
+    std::fread(&memory_origin, sizeof(memory_origin), 1, fp.get());
+    memory_origin = Swap16(memory_origin);
 
-    uint16_t remainingMemorySize = UINT16_MAX - memoryOrigin;
-    uint16_t *p = &memory_[0] + memoryOrigin;
-    auto nread = std::fread(p, sizeof(uint16_t), remainingMemorySize, fp.get());
+    uint16_t remaining_memory_size = UINT16_MAX - memory_origin;
+    uint16_t *p = &memory_[0] + memory_origin;
+    auto nread = std::fread(p, sizeof(uint16_t), remaining_memory_size, fp.get());
     while (nread-- > 0) {
       *p = Swap16(*p);
       ++p;
@@ -118,14 +118,14 @@ class Simulator {
   }
 
   uint16_t CheckKeyInput() {
-    fd_set readFDs;
-    FD_ZERO(&readFDs);
-    FD_SET(STDIN_FILENO, &readFDs);
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(STDIN_FILENO, &read_fds);
 
     struct timeval timeout;
     timeout.tv_sec = 0;
     timeout.tv_usec = 0;
-    return select(1, &readFDs, NULL, NULL, &timeout) != 0;
+    return select(1, &read_fds, NULL, NULL, &timeout) != 0;
   }
 
   void WriteMemory(uint16_t address, uint16_t x) { memory_[address] = x; }
@@ -186,10 +186,10 @@ class Simulator {
         } break;
 
         case kBranch: {
-          uint16_t pcOffset = SignExtend(instr & 0x1FF, 9);
+          uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
           uint16_t condition = (instr >> 9) & 0x7;
           if (condition & registers_[kCondition]) {
-            registers_[kPC] += pcOffset;
+            registers_[kPC] += pc_offset;
           }
         } break;
 
@@ -199,11 +199,11 @@ class Simulator {
         } break;
 
         case kJumpRegister: {
-          bool longFlag = (instr >> 11) & 1;
+          bool long_flag = (instr >> 11) & 1;
           registers_[kR7] = registers_[kPC];
-          if (longFlag) {  // JSR
-            uint16_t longPCOffset = SignExtend(instr & 0x7FF, 11);
-            registers_[kPC] += longPCOffset;
+          if (long_flag) {  // JSR
+            uint16_t longpc_offset = SignExtend(instr & 0x7FF, 11);
+            registers_[kPC] += longpc_offset;
           } else {  // JSRR
             uint16_t r1 = (instr >> 6) & 0x7;
             registers_[kPC] += registers_[r1];
@@ -212,43 +212,43 @@ class Simulator {
 
         case kLoad: {
           uint16_t r0 = (instr >> 9) & 0x7;
-          uint16_t pcOffset = SignExtend(instr & 0x1FF, 9);
-          registers_[r0] = ReadMemory(registers_[kPC] + pcOffset);
+          uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
+          registers_[r0] = ReadMemory(registers_[kPC] + pc_offset);
           UpdateFlags(r0);
         } break;
 
         case kLoadIndirect: {
           uint16_t r0 = (instr >> 9) & 0x7;
-          uint16_t pcOffset = SignExtend(instr & 0x1FF, 9);
-          registers_[r0] = ReadMemory(ReadMemory(registers_[kPC] + pcOffset));
+          uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
+          registers_[r0] = ReadMemory(ReadMemory(registers_[kPC] + pc_offset));
           UpdateFlags(r0);
         } break;
 
         case kLoadRegister: {
           uint16_t r0 = (instr >> 9) & 0x7;
           uint16_t r1 = (instr >> 6) & 0x7;
-          uint16_t pcOffset = SignExtend(instr & 0x3F, 6);
-          registers_[r0] = ReadMemory(registers_[r1] + pcOffset);
+          uint16_t pc_offset = SignExtend(instr & 0x3F, 6);
+          registers_[r0] = ReadMemory(registers_[r1] + pc_offset);
           UpdateFlags(r0);
         } break;
 
         case kLoadEffectiveAddress: {
           uint16_t r0 = (instr >> 9) & 0x7;
-          uint16_t pcOffset = SignExtend(instr & 0x1FF, 9);
-          registers_[r0] = registers_[kPC] + pcOffset;
+          uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
+          registers_[r0] = registers_[kPC] + pc_offset;
           UpdateFlags(r0);
         } break;
 
         case kStore: {
           uint16_t r0 = (instr >> 9) & 0x7;
-          uint16_t pcOffset = SignExtend(instr & 0x1FF, 9);
-          WriteMemory(registers_[kPC] + pcOffset, registers_[r0]);
+          uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
+          WriteMemory(registers_[kPC] + pc_offset, registers_[r0]);
         } break;
 
         case kStoreIndirect: {
           uint16_t r0 = (instr >> 9) & 0x7;
-          uint16_t pcOffset = SignExtend(instr & 0x1FF, 9);
-          WriteMemory(ReadMemory(registers_[kPC] + pcOffset), registers_[r0]);
+          uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
+          WriteMemory(ReadMemory(registers_[kPC] + pc_offset), registers_[r0]);
         } break;
 
         case kStoreRegister: {
@@ -323,17 +323,17 @@ class Simulator {
   std::array<uint16_t, Register::kRegisterCount> registers_;
 };
 
-struct termios originalTermios;
+struct termios original_termios;
 
 void DisableInputBuffering() {
-  tcgetattr(STDIN_FILENO, &originalTermios);
-  struct termios newTermios = originalTermios;
+  tcgetattr(STDIN_FILENO, &original_termios);
+  struct termios newTermios = original_termios;
   newTermios.c_lflag &= ~ICANON & ~ECHO;
   tcsetattr(STDIN_FILENO, TCSANOW, &newTermios);
 }
 
 void RestoreInputBuffering() {
-  tcsetattr(STDIN_FILENO, TCSANOW, &originalTermios);
+  tcsetattr(STDIN_FILENO, TCSANOW, &original_termios);
 }
 
 void HandleInterrupt(int signal) {
