@@ -22,27 +22,27 @@ enum Register {
   kR6,
   kR7,
   kPC,  // program counter
-  kCondition,
+  kCOND,
   kRegisterCount
 };
 
 enum OpCode {
-  kBranch = 0,            // branch
-  kAdd,                   // add
-  kLoad,                  // load
-  kStore,                 // store
-  kJumpRegister,          // jump register
-  kBitwiseAnd,            // bitwise and
-  kLoadRegister,          // load register
-  kStoreRegister,         // store register
-  kReturnFromInterrupt,   // unused
-  kBitwiseNot,            // bitwise not
-  kLoadIndirect,          // load indirect
-  kStoreIndirect,         // store indirect
-  kJump,                  // jump
-  kReserved,              // reserved (unused)
-  kLoadEffectiveAddress,  // load effective address
-  kTrap                   // execute trap
+  kBR = 0,  // branch
+  kADD,     // add
+  kLD,      // load
+  kST,      // store
+  kJSR,     // jump register
+  kAND,     // bitwise and
+  kLDR,     // load register
+  kSTR,     // store register
+  kRTI,     // unused
+  kNOT,     // bitwise not
+  kLDI,     // load indirect
+  kSTI,     // store indirect
+  kJMP,     // jump
+  kRES,     // reserved (unused)
+  kLEA,     // load effective address
+  kTRAP     // execute trap
 };
 
 enum Flag {
@@ -52,17 +52,17 @@ enum Flag {
 };
 
 enum MMIO {
-  KeyboardStatus = 0xFE00,  // keyboard status
-  KeyboardData = 0xFE02     // keyboard data
+  kKBSR = 0xFE00,  // keyboard status
+  kKBDR = 0xFE02   // keyboard data
 };
 
 enum TrapCode {
-  kGetC = 0x20,   // get character from keyboard, not echoed onto the terminal
-  kOut = 0x21,    // output a character
-  kPutS = 0x22,   // output a word string
-  kIn = 0x23,     // get character from keyboard, echoed onto the terminal
-  kPutSP = 0x24,  // output a byte string
-  kHalt = 0x25    // halt the program
+  kGETC = 0x20,   // get character from keyboard, not echoed onto the terminal
+  kOUT = 0x21,    // output a character
+  kPUTS = 0x22,   // output a word string
+  kIN = 0x23,     // get character from keyboard, echoed onto the terminal
+  kPUTSP = 0x24,  // output a byte string
+  kHALT = 0x25    // halt the program
 };
 
 uint16_t SignExtend(uint16_t x, int bitCount) {
@@ -90,13 +90,13 @@ class Simulator {
 
   void UpdateFlags(uint16_t r) {
     if (registers_[r] == 0) {
-      registers_[kCondition] = kZero;
+      registers_[kCOND] = kZero;
     } else if (registers_[r] >>
                15)  // a 1 in the left-most bit indicates negative
     {
-      registers_[kCondition] = kNegative;
+      registers_[kCOND] = kNegative;
     } else {
-      registers_[kCondition] = kPositive;
+      registers_[kCOND] = kPositive;
     }
   }
 
@@ -109,7 +109,8 @@ class Simulator {
 
     uint16_t remaining_memory_size = UINT16_MAX - memory_origin;
     uint16_t *p = &memory_[0] + memory_origin;
-    auto nread = std::fread(p, sizeof(uint16_t), remaining_memory_size, fp.get());
+    auto nread =
+        std::fread(p, sizeof(uint16_t), remaining_memory_size, fp.get());
     while (nread-- > 0) {
       *p = Swap16(*p);
       ++p;
@@ -131,13 +132,13 @@ class Simulator {
   void WriteMemory(uint16_t address, uint16_t x) { memory_[address] = x; }
 
   uint16_t ReadMemory(uint16_t address) {
-    if (address == KeyboardStatus) {
+    if (address == kKBSR) {
       if (CheckKeyInput()) {
-        memory_[KeyboardStatus] = (1 << 15);
+        memory_[kKBSR] = (1 << 15);
         auto c = std::getchar();
-        memory_[KeyboardData] = static_cast<uint16_t>(c);
+        memory_[kKBDR] = static_cast<uint16_t>(c);
       } else {
-        memory_[KeyboardStatus] = 0;
+        memory_[kKBSR] = 0;
       }
     }
     return memory_[address];
@@ -150,7 +151,7 @@ class Simulator {
       uint16_t op = instr >> 12;
 
       switch (op) {
-        case kAdd: {
+        case kADD: {
           uint16_t r0 = (instr >> 9) & 0x7;
           uint16_t r1 = (instr >> 6) & 0x7;
           bool immediate = (instr >> 5) & 0x1;
@@ -164,7 +165,7 @@ class Simulator {
           UpdateFlags(r0);
         } break;
 
-        case kBitwiseAnd: {
+        case kAND: {
           uint16_t r0 = (instr >> 9) & 0x7;
           uint16_t r1 = (instr >> 6) & 0x7;
           bool immediate = (instr >> 5) & 0x1;
@@ -178,27 +179,27 @@ class Simulator {
           UpdateFlags(r0);
         } break;
 
-        case kBitwiseNot: {
+        case kNOT: {
           uint16_t r0 = (instr >> 9) & 0x7;
           uint16_t r1 = (instr >> 6) & 0x7;
           registers_[r0] = ~registers_[r1];
           UpdateFlags(r0);
         } break;
 
-        case kBranch: {
+        case kBR: {
           uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
           uint16_t condition = (instr >> 9) & 0x7;
-          if (condition & registers_[kCondition]) {
+          if (condition & registers_[kCOND]) {
             registers_[kPC] += pc_offset;
           }
         } break;
 
-        case kJump: {
+        case kJMP: {
           uint16_t r1 = (instr >> 6) & 0x7;
           registers_[kPC] = registers_[r1];
         } break;
 
-        case kJumpRegister: {
+        case kJSR: {
           bool long_flag = (instr >> 11) & 1;
           registers_[kR7] = registers_[kPC];
           if (long_flag) {  // JSR
@@ -210,21 +211,21 @@ class Simulator {
           }
         } break;
 
-        case kLoad: {
+        case kLD: {
           uint16_t r0 = (instr >> 9) & 0x7;
           uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
           registers_[r0] = ReadMemory(registers_[kPC] + pc_offset);
           UpdateFlags(r0);
         } break;
 
-        case kLoadIndirect: {
+        case kLDI: {
           uint16_t r0 = (instr >> 9) & 0x7;
           uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
           registers_[r0] = ReadMemory(ReadMemory(registers_[kPC] + pc_offset));
           UpdateFlags(r0);
         } break;
 
-        case kLoadRegister: {
+        case kLDR: {
           uint16_t r0 = (instr >> 9) & 0x7;
           uint16_t r1 = (instr >> 6) & 0x7;
           uint16_t pc_offset = SignExtend(instr & 0x3F, 6);
@@ -232,45 +233,45 @@ class Simulator {
           UpdateFlags(r0);
         } break;
 
-        case kLoadEffectiveAddress: {
+        case kLEA: {
           uint16_t r0 = (instr >> 9) & 0x7;
           uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
           registers_[r0] = registers_[kPC] + pc_offset;
           UpdateFlags(r0);
         } break;
 
-        case kStore: {
+        case kST: {
           uint16_t r0 = (instr >> 9) & 0x7;
           uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
           WriteMemory(registers_[kPC] + pc_offset, registers_[r0]);
         } break;
 
-        case kStoreIndirect: {
+        case kSTI: {
           uint16_t r0 = (instr >> 9) & 0x7;
           uint16_t pc_offset = SignExtend(instr & 0x1FF, 9);
           WriteMemory(ReadMemory(registers_[kPC] + pc_offset), registers_[r0]);
         } break;
 
-        case kStoreRegister: {
+        case kSTR: {
           uint16_t r0 = (instr >> 9) & 0x7;
           uint16_t r1 = (instr >> 6) & 0x7;
           uint16_t offset = SignExtend(instr & 0x3F, 6);
           WriteMemory(registers_[r1] + offset, registers_[r0]);
         } break;
 
-        case kTrap: {
+        case kTRAP: {
           switch (instr & 0xFF) {
-            case kGetC: {
+            case kGETC: {
               auto c = std::getchar();
               registers_[kR0] = static_cast<uint16_t>(c);
             } break;
 
-            case kOut: {
+            case kOUT: {
               std::putchar(static_cast<char>(registers_[kR0]));
               std::fflush(stdout);
             } break;
 
-            case kPutS: {
+            case kPUTS: {
               uint16_t *c = &memory_[0] + registers_[kR0];
               while (*c) {
                 std::putchar(static_cast<char>(*c));
@@ -279,14 +280,14 @@ class Simulator {
               std::fflush(stdout);
             } break;
 
-            case kIn: {
+            case kIN: {
               std::cout << "Enter a character: ";
               auto c = std::getchar();
               std::putchar(c);
               registers_[kR0] = static_cast<uint16_t>(c);
             } break;
 
-            case kPutSP: {
+            case kPUTSP: {
               uint16_t *c = &memory_[0] + registers_[kR0];
               while (*c) {
                 char c1 = static_cast<char>((*c) & 0xFF);
@@ -300,7 +301,7 @@ class Simulator {
               std::fflush(stdout);
             } break;
 
-            case kHalt: {
+            case kHALT: {
               std::puts("HALT");
               std::fflush(stdout);
               running = false;
@@ -309,8 +310,8 @@ class Simulator {
           break;
         }
 
-        case kReserved:
-        case kReturnFromInterrupt:
+        case kRES:
+        case kRTI:
         default:
           std::abort();
           break;
